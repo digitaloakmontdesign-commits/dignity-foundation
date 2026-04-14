@@ -62,6 +62,37 @@ export default function Dashboard() {
     load()
   }, [])
 
+  useEffect(() => {
+    async function setupNotifications() {
+      if (!('serviceWorker' in navigator) || !('Notification' in window)) return
+      try {
+        await navigator.serviceWorker.register('/sw.js')
+        const permission = await Notification.requestPermission()
+        if (permission !== 'granted') return
+        scheduleNightlyNotification()
+      } catch (e) { console.log('SW error:', e) }
+    }
+
+    function scheduleNightlyNotification() {
+      const now = new Date()
+      const next9pm = new Date()
+      next9pm.setHours(21, 0, 0, 0)
+      if (now >= next9pm) next9pm.setDate(next9pm.getDate() + 1)
+      const msUntil9pm = next9pm.getTime() - now.getTime()
+      setTimeout(() => {
+        if (Notification.permission === 'granted') {
+          new Notification('Hi', {
+            body: 'Hey, just checking on you.',
+            icon: '/icon-192.png',
+          })
+        }
+        scheduleNightlyNotification()
+      }, msUntil9pm)
+    }
+
+    setupNotifications()
+  }, [])
+
   function getAudioCtx() {
     if (!audioCtx.current) {
       audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)()
@@ -379,9 +410,14 @@ export default function Dashboard() {
           padding: '3rem', width: '100%', maxWidth: '420px', textAlign: 'center'
         }}>
           <h1 style={{
-            fontSize: '1.9rem', marginBottom: '0.2rem', color: '#3B2A1A',
+            fontSize: '2.4rem', marginBottom: '0.1rem', color: '#3B2A1A',
             letterSpacing: '0.02em', fontWeight: 'normal'
-          }}>Dignity Foundation</h1>
+          }}>Hi</h1>
+
+          <p style={{
+            color: '#B08A10', fontSize: '0.65rem',
+            marginBottom: '0.3rem', letterSpacing: '0.14em', textTransform: 'uppercase'
+          }}>Dignity Foundation</p>
 
           <p style={{
             color: '#8A7862', fontSize: '0.85rem',
