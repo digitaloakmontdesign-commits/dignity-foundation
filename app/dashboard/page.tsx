@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [holdLabel, setHoldLabel] = useState("I'm here.")
   const [showBullet, setShowBullet] = useState(false)
   const [circleWhite, setCircleWhite] = useState(0)
+  const [profileLoading, setProfileLoading] = useState(true)
 
   const animFrame = useRef<any>(null)
   const holdStart = useRef<number>(0)
@@ -58,6 +59,7 @@ export default function Dashboard() {
           if (diff < 24) setAlreadyCheckedIn(true)
         }
       }
+      setProfileLoading(false)
     }
     load()
   }, [])
@@ -167,7 +169,7 @@ export default function Dashboard() {
   }
 
   async function startHold() {
-    if (alreadyCheckedIn || completing) return
+    if (alreadyCheckedIn || completing || profileLoading) return
     await loadSounds()
     lastWhooshTime.current = 0
     setHolding(true); setShowBullet(true); setCircleWhite(0)
@@ -188,6 +190,17 @@ export default function Dashboard() {
     const supabase = createClient()
     const { data: profile } = await supabase
       .from('profiles').select('*').eq('id', user.id).single()
+
+    // Server-side guard — double check before adding money
+    if (profile?.last_checkin_at) {
+      const diff = (Date.now() - new Date(profile.last_checkin_at).getTime()) / 36e5
+      if (diff < 24) {
+        setCompleting(false); setAlreadyCheckedIn(true)
+        setShowBullet(false); setHoldProgress(0); setBulletAngle(0)
+        return
+      }
+    }
+
     const newBalance = (profile?.balance_cents || 0) + 10
     await supabase.from('profiles').upsert({
       id: user.id, balance_cents: newBalance,
