@@ -526,14 +526,22 @@ export default function Dashboard() {
             margin: '1rem 0'
           }} />
 
-          <button onClick={() => window.location.href = '/withdraw'} style={{
-            background: 'none', border: 'none', color: '#B08A10',
-            fontSize: '0.8rem', cursor: 'pointer',
-            letterSpacing: '0.06em', fontFamily: 'Georgia, serif',
-            marginBottom: '0.5rem', display: 'block', width: '100%'
-          }}>
-            withdraw
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '0.5rem' }}>
+            <button onClick={() => window.location.href = '/withdraw'} style={{
+              background: 'none', border: 'none', color: '#B08A10',
+              fontSize: '0.8rem', cursor: 'pointer',
+              letterSpacing: '0.06em', fontFamily: 'Georgia, serif',
+            }}>
+              withdraw cash
+            </button>
+            <button onClick={() => window.location.href = '/friends'} style={{
+              background: 'none', border: 'none', color: '#B08A10',
+              fontSize: '0.8rem', cursor: 'pointer',
+              letterSpacing: '0.06em', fontFamily: 'Georgia, serif',
+            }}>
+              check on friends
+            </button>
+          </div>
 
           <button onClick={handleSignOut} style={{
             background: 'none', border: 'none', color: '#A09078',
