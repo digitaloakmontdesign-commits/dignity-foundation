@@ -1,568 +1,388 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { createClient } from '../../supabase'
+import { useState } from 'react'
+import { createClient } from '../supabase'
 
-const MESSAGES = [
-  "Yes. You are here. And that's what matters most.",
-  "You showed up; that's more than most.",
-  "Remember, pride is not the opposite of shame, but its source.",
-  "Do today what others will not do, so tomorrow you can do what others can't.",
-  "Peace begins when you stop fighting with yourself.",
-  "Presence is the first act of courage.",
-  "Do, or do not. There is no try.",
-  "Because you chose to.",
-  "100% a week does not mean 100% each day. Spread out your efforts.",
-  "Breathe. You are safe.",
-  "You don't have to forget, but you do need to let go of what you can't change.",
-  "YOLO is the greatest lie. Rather, you live 365 days a year.",
-]
+export default function SignIn() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [isMagicLink, setIsMagicLink] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [magicSent, setMagicSent] = useState(false)
 
-export default function Dashboard() {
-  const [user, setUser] = useState<any>(null)
-  const [balance, setBalance] = useState(0)
-  const [alreadyCheckedIn, setAlreadyCheckedIn] = useState(false)
-  const [holding, setHolding] = useState(false)
-  const [completing, setCompleting] = useState(false)
-  const [whiteOpacity, setWhiteOpacity] = useState(0)
-  const [showWhiteScreen, setShowWhiteScreen] = useState(false)
-  const [whiteFadingOut, setWhiteFadingOut] = useState(false)
-  const [whiteMessage, setWhiteMessage] = useState('')
-  const [bulletAngle, setBulletAngle] = useState(0)
-  const [holdProgress, setHoldProgress] = useState(0)
-  const [holdLabel, setHoldLabel] = useState("I'm here.")
-  const [showBullet, setShowBullet] = useState(false)
-  const [circleWhite, setCircleWhite] = useState(0)
-  const [profileLoading, setProfileLoading] = useState(true)
-
-  const animFrame = useRef<any>(null)
-  const holdStart = useRef<number>(0)
-  const audioCtx = useRef<AudioContext | null>(null)
-  const whooshBuffer = useRef<AudioBuffer | null>(null)
-  const chachingBuffer = useRef<AudioBuffer | null>(null)
-  const lastWhooshTime = useRef<number>(0)
-  const audioReady = useRef<boolean>(false)
-  const HOLD_DURATION = 10000
-
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { window.location.href = '/'; return }
-      setUser(user)
-      const { data: profile } = await supabase
-        .from('profiles').select('*').eq('id', user.id).single()
-      if (profile) {
-        setBalance(profile.balance_cents)
-        if (profile.last_checkin_at) {
-          const diff = (Date.now() - new Date(profile.last_checkin_at).getTime()) / 36e5
-          if (diff < 24) setAlreadyCheckedIn(true)
-        }
-      }
-      setProfileLoading(false)
-    }
-    load()
-  }, [])
-
-  useEffect(() => {
-    async function setupNotifications() {
-      if (!('serviceWorker' in navigator) || !('Notification' in window)) return
-      try {
-        await navigator.serviceWorker.register('/sw.js')
-        const permission = await Notification.requestPermission()
-        if (permission !== 'granted') return
-        scheduleNightlyNotification()
-      } catch (e) { console.log('SW error:', e) }
-    }
-
-    function scheduleNightlyNotification() {
-      const now = new Date()
-      const next9pm = new Date()
-      next9pm.setHours(21, 0, 0, 0)
-      if (now >= next9pm) next9pm.setDate(next9pm.getDate() + 1)
-      const msUntil9pm = next9pm.getTime() - now.getTime()
-      setTimeout(() => {
-        if (Notification.permission === 'granted') {
-          new Notification('Hi', {
-            body: 'Hey, just checking on you.',
-            icon: '/icon-192.png',
-          })
-        }
-        scheduleNightlyNotification()
-      }, msUntil9pm)
-    }
-
-    setupNotifications()
-  }, [])
-
-  function getAudioCtx() {
-    if (!audioCtx.current) {
-      audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)()
-    }
-    return audioCtx.current
-  }
-
-  async function loadSounds() {
-    if (audioReady.current) return
-    try {
-      const ctx = getAudioCtx()
-      const [whooshRes, chachingRes] = await Promise.all([
-        fetch('/woosh.mp3'), fetch('/cha-ching.wav'),
-      ])
-      const [whooshArr, chachingArr] = await Promise.all([
-        whooshRes.arrayBuffer(), chachingRes.arrayBuffer(),
-      ])
-      const [wb, cb] = await Promise.all([
-        ctx.decodeAudioData(whooshArr), ctx.decodeAudioData(chachingArr),
-      ])
-      whooshBuffer.current = wb
-      chachingBuffer.current = cb
-      audioReady.current = true
-    } catch (e) { console.log('Audio load error:', e) }
-  }
-
-  function playWhoosh(progress: number) {
-    if (!whooshBuffer.current || !audioCtx.current) return
-    const interval = 900 - progress * progress * 820
-    if (Date.now() - lastWhooshTime.current < interval) return
-    lastWhooshTime.current = Date.now()
-    const ctx = audioCtx.current
-    const source = ctx.createBufferSource()
-    const gain = ctx.createGain()
-    source.buffer = whooshBuffer.current
-    source.playbackRate.value = 0.6 + progress * progress * 2.4
-    gain.gain.value = 0.25 + progress * 0.5
-    source.connect(gain)
-    gain.connect(ctx.destination)
-    source.start()
-    setTimeout(() => { try { source.stop() } catch (e) {} },
-      Math.max(80, 400 - progress * 320))
-  }
-
-  function playChaChingSound() {
-    if (!chachingBuffer.current || !audioCtx.current) return
-    const ctx = audioCtx.current
-    const source = ctx.createBufferSource()
-    const gain = ctx.createGain()
-    source.buffer = chachingBuffer.current
-    gain.gain.value = 0.8
-    source.connect(gain)
-    gain.connect(ctx.destination)
-    source.start()
-  }
-
-  function animate() {
-    const elapsed = Date.now() - holdStart.current
-    const t = Math.min(elapsed / HOLD_DURATION, 1)
-    setHoldProgress(t)
-    const speed = 80 + t * t * t * 4000
-    setBulletAngle(prev => (prev + speed / 60) % 360)
-    const white = t > 0.88 ? (t - 0.88) / 0.12 : 0
-    setCircleWhite(white)
-    playWhoosh(t)
-    if (elapsed < 300) setHoldLabel("I'm here.")
-    else if (elapsed < 3000) setHoldLabel("breathe in...")
-    else if (t < 0.88) setHoldLabel("breathe out...")
-    else setHoldLabel("")
-    if (t < 1) { animFrame.current = requestAnimationFrame(animate) }
-    else completeCheckin()
-  }
-
-  async function startHold() {
-    if (alreadyCheckedIn || completing || profileLoading) return
-    await loadSounds()
-    lastWhooshTime.current = 0
-    setHolding(true); setShowBullet(true); setCircleWhite(0)
-    setBulletAngle(0); setHoldProgress(0); setHoldLabel("I'm here.")
-    holdStart.current = Date.now()
-    animFrame.current = requestAnimationFrame(animate)
-  }
-
-  function cancelHold() {
-    if (completing) return
-    cancelAnimationFrame(animFrame.current)
-    setHolding(false); setShowBullet(false); setCircleWhite(0)
-    setBulletAngle(0); setHoldProgress(0); setHoldLabel("I'm here.")
-  }
-
-  async function completeCheckin() {
-    setCompleting(true); setHolding(false)
+  async function handleSubmit() {
+    setError('')
+    setLoading(true)
     const supabase = createClient()
-    const { data: profile } = await supabase
-      .from('profiles').select('*').eq('id', user.id).single()
+    const { error } = isSignUp
+      ? await supabase.auth.signUp({ email, password })
+      : await supabase.auth.signInWithPassword({ email, password })
+    if (error) { setError(error.message); setLoading(false) }
+    else window.location.href = '/dashboard'
+  }
 
-    // Server-side guard — double check before adding money
-    if (profile?.last_checkin_at) {
-      const diff = (Date.now() - new Date(profile.last_checkin_at).getTime()) / 36e5
-      if (diff < 24) {
-        setCompleting(false); setAlreadyCheckedIn(true)
-        setShowBullet(false); setHoldProgress(0); setBulletAngle(0)
-        return
-      }
-    }
-
-    const newBalance = (profile?.balance_cents || 0) + 10
-    await supabase.from('profiles').upsert({
-      id: user.id, balance_cents: newBalance,
-      last_checkin_at: new Date().toISOString()
+  async function handleMagicLink() {
+    if (!email) { setError('Please enter your email.'); return }
+    setError('')
+    setLoading(true)
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/dashboard` }
     })
-    const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)]
-    setWhiteMessage(msg)
-    setShowWhiteScreen(true); setWhiteOpacity(0); setWhiteFadingOut(false)
-    await new Promise(r => setTimeout(r, 50))
-    setWhiteOpacity(1)
-    setTimeout(() => {
-      setBalance(newBalance); setShowBullet(false)
-      setCircleWhite(0); setHoldProgress(0)
-    }, 1500)
-    setTimeout(() => { setWhiteFadingOut(true); setWhiteOpacity(0) }, 7000)
-    setTimeout(() => {
-      setShowWhiteScreen(false); setWhiteFadingOut(false)
-      setCompleting(false); setAlreadyCheckedIn(true)
-      setBulletAngle(0); playChaChingSound()
-    }, 9500)
+    if (error) { setError(error.message); setLoading(false) }
+    else { setMagicSent(true); setLoading(false) }
   }
-
-  async function handleSignOut() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    window.location.href = '/'
-  }
-
-  const dollars = (balance / 100).toFixed(2)
-  const R = 70; const cx = 80; const cy = 80
-  const angleRad = (bulletAngle - 90) * (Math.PI / 180)
-  const bulletX = cx + R * Math.cos(angleRad)
-  const bulletY = cy + R * Math.sin(angleRad)
-  const trailLength = 40 + holdProgress * holdProgress * 340
-  const trailCount = 56
-  const trailPoints = Array.from({ length: trailCount }, (_, i) => {
-    const trailAngle = (bulletAngle - 90 - (trailLength * (i / trailCount))) * (Math.PI / 180)
-    const fade = 1 - i / trailCount
-    const opacity = fade * (0.3 + holdProgress * 0.7)
-    const r = Math.round(200 + holdProgress * 55)
-    const g = Math.round(160 + holdProgress * 95)
-    const b = Math.round(40 + holdProgress * 215)
-    return {
-      x: cx + R * Math.cos(trailAngle),
-      y: cy + R * Math.sin(trailAngle),
-      opacity, r: Math.max(0.3, 5 - i * 0.07),
-      color: `rgba(${r},${g},${b},${opacity})`
-    }
-  })
-
-  const buttonLabel = completing ? ''
-    : alreadyCheckedIn ? 'see you\ntomorrow'
-    : holding ? holdLabel : "I'm here."
-
-  const bulletR = Math.round(220 + holdProgress * 35)
-  const bulletG = Math.round(180 + holdProgress * 75)
-  const bulletB = Math.round(50 + holdProgress * 205)
-  const bulletColor = `rgb(${bulletR},${bulletG},${bulletB})`
 
   return (
     <>
-      {showWhiteScreen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'white', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 100, opacity: whiteOpacity,
-          transition: whiteFadingOut ? 'opacity 2.5s ease' : 'opacity 1.5s ease',
-          padding: '2.5rem', textAlign: 'center',
-          pointerEvents: whiteOpacity > 0.5 ? 'all' : 'none'
-        }}>
-          <p style={{
-            fontFamily: 'Georgia, serif', fontSize: '1.6rem', color: '#3B2A1A',
-            lineHeight: '1.9', maxWidth: '340px', fontStyle: 'italic',
-            opacity: whiteOpacity > 0.95 ? 1 : 0, transition: 'opacity 1.2s ease'
-          }}>{whiteMessage}</p>
-        </div>
-      )}
-
       <style>{`
-        @keyframes threadDrift {
-          0%   { transform: translateX(0px) translateY(0px); }
-          33%  { transform: translateX(16px) translateY(-9px); }
-          66%  { transform: translateX(-9px) translateY(5px); }
-          100% { transform: translateX(0px) translateY(0px); }
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@200;300;400&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        @keyframes silkDrift {
+          0%   { transform: translateX(0px) translateY(0px) rotate(0deg); }
+          33%  { transform: translateX(18px) translateY(-12px) rotate(0.4deg); }
+          66%  { transform: translateX(-10px) translateY(6px) rotate(-0.2deg); }
+          100% { transform: translateX(0px) translateY(0px) rotate(0deg); }
         }
-        @keyframes rayPulse {
-          0%   { opacity: 0.5; }
-          50%  { opacity: 0.82; }
-          100% { opacity: 0.5; }
+        @keyframes shimmer {
+          0%   { opacity: 0.4; }
+          50%  { opacity: 0.75; }
+          100% { opacity: 0.4; }
         }
-        @keyframes galaxyPulse {
-          0%   { opacity: 0.72; transform: scale(1); }
-          50%  { opacity: 1; transform: scale(1.09); }
-          100% { opacity: 0.72; transform: scale(1); }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(22px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes pulseGold {
-          0%   { box-shadow: 0 0 10px rgba(190,165,95,0.4); }
-          50%  { box-shadow: 0 0 40px rgba(190,165,95,0.9); }
-          100% { box-shadow: 0 0 10px rgba(190,165,95,0.4); }
+
+        .page-wrap {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Jost', sans-serif;
+          position: relative;
+          overflow: hidden;
+          background: #F2F0ED;
         }
-        @keyframes pulseWhite {
-          0%   { box-shadow: 0 0 12px rgba(255,255,255,0.5); }
-          50%  { box-shadow: 0 0 45px rgba(255,255,255,1); }
-          100% { box-shadow: 0 0 12px rgba(255,255,255,0.5); }
+
+        .bg-base {
+          position: fixed; inset: 0; z-index: 0;
+          background: radial-gradient(ellipse 120% 100% at 30% 20%, #EAE6E0 0%, #E0DBD4 35%, #D4CEC7 70%, #C8C2BA 100%);
+        }
+
+        .bg-silk {
+          position: fixed; inset: 0; z-index: 1;
+          pointer-events: none;
+          animation: silkDrift 28s ease-in-out infinite;
+        }
+
+        .bg-vignette {
+          position: fixed; inset: 0; z-index: 2;
+          pointer-events: none;
+          background: radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(150,142,132,0.22) 100%);
+        }
+
+        .card {
+          position: relative; z-index: 10;
+          width: 100%; max-width: 400px;
+          margin: 2rem;
+          background: linear-gradient(160deg,
+            rgba(255,255,253,0.78) 0%,
+            rgba(248,245,240,0.82) 50%,
+            rgba(238,234,228,0.76) 100%
+          );
+          border: 1px solid rgba(210,204,196,0.6);
+          border-radius: 3px;
+          box-shadow:
+            0 2px 4px rgba(100,92,82,0.06),
+            0 8px 32px rgba(100,92,82,0.10),
+            0 32px 80px rgba(100,92,82,0.10),
+            inset 0 1px 0 rgba(255,255,255,0.9),
+            inset 0 -1px 0 rgba(180,172,160,0.12);
+          backdrop-filter: blur(28px);
+          padding: 3.5rem 3rem;
+          animation: fadeUp 1.1s cubic-bezier(0.22,1,0.36,1) both;
+        }
+
+        .card::before {
+          content: '';
+          position: absolute;
+          top: -1px; left: 10%; right: 10%;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(220,215,205,0.9), transparent);
+        }
+
+        .title {
+          font-family: 'Cormorant Garamond', serif;
+          font-size: 2.1rem;
+          font-weight: 300;
+          color: #4A4440;
+          letter-spacing: 0.04em;
+          text-align: center;
+          margin-bottom: 0.3rem;
+          animation: fadeUp 1.1s 0.1s cubic-bezier(0.22,1,0.36,1) both;
+        }
+
+        .subtitle {
+          font-size: 0.72rem;
+          font-weight: 300;
+          color: #9A948C;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          text-align: center;
+          margin-bottom: 2.8rem;
+          animation: fadeUp 1.1s 0.18s cubic-bezier(0.22,1,0.36,1) both;
+        }
+
+        .divider {
+          width: 40px; height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(170,162,152,0.6), transparent);
+          margin: 0 auto 2.8rem;
+          animation: fadeUp 1.1s 0.22s cubic-bezier(0.22,1,0.36,1) both;
+        }
+
+        .field {
+          margin-bottom: 1.4rem;
+          animation: fadeUp 1.1s cubic-bezier(0.22,1,0.36,1) both;
+        }
+
+        .field label {
+          display: block;
+          font-size: 0.65rem;
+          font-weight: 300;
+          letter-spacing: 0.2em;
+          text-transform: uppercase;
+          color: #8A8480;
+          margin-bottom: 0.55rem;
+        }
+
+        .field input {
+          width: 100%;
+          background: rgba(255,255,255,0.5);
+          border: 1px solid rgba(195,188,180,0.7);
+          border-radius: 2px;
+          padding: 0.85rem 1rem;
+          font-family: 'Jost', sans-serif;
+          font-size: 0.9rem;
+          font-weight: 300;
+          color: #4A4440;
+          outline: none;
+          transition: border-color 0.3s, background 0.3s, box-shadow 0.3s;
+        }
+        .field input::placeholder { color: #BEB8B2; }
+        .field input:focus {
+          border-color: rgba(170,162,152,0.9);
+          background: rgba(255,255,255,0.72);
+          box-shadow: 0 0 0 3px rgba(180,172,160,0.12);
+        }
+
+        .error {
+          font-size: 0.75rem;
+          color: #A08880;
+          text-align: center;
+          margin-bottom: 1rem;
+          font-style: italic;
+        }
+
+        .btn {
+          width: 100%;
+          padding: 0.95rem;
+          background: linear-gradient(160deg, #6B6560 0%, #524E4A 100%);
+          border: none;
+          border-radius: 2px;
+          color: rgba(240,237,232,0.95);
+          font-family: 'Jost', sans-serif;
+          font-size: 0.72rem;
+          font-weight: 300;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          cursor: pointer;
+          transition: opacity 0.3s, transform 0.2s, box-shadow 0.3s;
+          box-shadow: 0 2px 12px rgba(80,74,68,0.22);
+          margin-top: 0.4rem;
+        }
+        .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.5; cursor: default; transform: none; }
+
+        .btn-ghost {
+          width: 100%;
+          padding: 0.95rem;
+          background: transparent;
+          border: 1px solid rgba(195,188,180,0.7);
+          border-radius: 2px;
+          color: #8A8480;
+          font-family: 'Jost', sans-serif;
+          font-size: 0.72rem;
+          font-weight: 300;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          cursor: pointer;
+          transition: opacity 0.3s, border-color 0.3s;
+          margin-top: 0.75rem;
+        }
+        .btn-ghost:hover { border-color: rgba(170,162,152,0.9); color: #6B6560; }
+
+        .toggle {
+          margin-top: 2rem;
+          text-align: center;
+          font-size: 0.72rem;
+          font-weight: 300;
+          color: #9A948C;
+          letter-spacing: 0.06em;
+        }
+        .toggle button {
+          background: none; border: none;
+          color: #7A7470;
+          font-family: 'Jost', sans-serif;
+          font-size: 0.72rem;
+          font-weight: 300;
+          letter-spacing: 0.06em;
+          cursor: pointer;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+          text-decoration-color: rgba(140,134,128,0.4);
+          transition: color 0.2s;
+        }
+        .toggle button:hover { color: #4A4440; }
+
+        .or-divider {
+          display: flex; align-items: center; gap: 1rem;
+          margin: 1.5rem 0;
+        }
+        .or-divider span {
+          font-size: 0.65rem; color: #BEB8B2;
+          letter-spacing: 0.12em; text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .or-divider::before, .or-divider::after {
+          content: ''; flex: 1; height: 1px;
+          background: rgba(195,188,180,0.5);
         }
       `}</style>
 
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0,
-        backgroundImage: 'url(/bg-waves.jpg)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center center',
-        backgroundRepeat: 'no-repeat',
-      }} />
+      <div className="page-wrap">
+        <div className="bg-base" />
+        <div className="bg-silk">
+          <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice"
+            style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="silk1" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stopColor="rgba(220,215,205,0)" />
+                <stop offset="20%"  stopColor="rgba(220,215,205,0.28)" />
+                <stop offset="50%"  stopColor="rgba(235,230,222,0.55)" />
+                <stop offset="80%"  stopColor="rgba(220,215,205,0.28)" />
+                <stop offset="100%" stopColor="rgba(220,215,205,0)" />
+              </linearGradient>
+              <linearGradient id="silver1" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%"   stopColor="rgba(200,198,196,0)" />
+                <stop offset="25%"  stopColor="rgba(210,208,205,0.35)" />
+                <stop offset="50%"  stopColor="rgba(225,223,220,0.65)" />
+                <stop offset="75%"  stopColor="rgba(210,208,205,0.35)" />
+                <stop offset="100%" stopColor="rgba(200,198,196,0)" />
+              </linearGradient>
+              <radialGradient id="pool" cx="68%" cy="38%" r="18%">
+                <stop offset="0%"   stopColor="rgba(240,238,234,0.7)" />
+                <stop offset="40%"  stopColor="rgba(228,224,218,0.28)" />
+                <stop offset="100%" stopColor="rgba(220,216,210,0)" />
+              </radialGradient>
+            </defs>
+            <path d="M-100,380 C280,258 560,488 860,362 C1160,236 1320,408 1550,318 L1550,325 C1320,415 1160,243 860,369 C560,495 280,265 -100,387 Z"
+              fill="url(#silk1)" style={{ animation: 'shimmer 11s ease-in-out infinite' }} />
+            <path d="M-100,382 C280,260 560,490 860,364 C1160,238 1320,410 1550,320 L1550,322 C1320,412 1160,240 860,366 C560,492 280,262 -100,384 Z"
+              fill="url(#silver1)" opacity="0.7" style={{ animation: 'shimmer 11s 1s ease-in-out infinite' }} />
+            <path d="M-100,440 C220,322 500,538 800,415 C1100,292 1280,460 1550,372 L1550,378 C1280,466 1100,298 800,421 C500,544 220,328 -100,446 Z"
+              fill="url(#silk1)" opacity="0.5" style={{ animation: 'shimmer 14s 2s ease-in-out infinite' }} />
+            <path d="M-100,320 C260,208 520,418 820,302 C1120,186 1300,348 1550,268 L1550,273 C1300,353 1120,191 820,307 C520,423 260,213 -100,325 Z"
+              fill="url(#silver1)" opacity="0.4" style={{ animation: 'shimmer 16s 0.5s ease-in-out infinite' }} />
+            <rect x="0" y="0" width="1440" height="900" fill="url(#pool)"
+              style={{ animation: 'shimmer 8s ease-in-out infinite' }} />
+          </svg>
+        </div>
+        <div className="bg-vignette" />
 
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        zIndex: 1, pointerEvents: 'none', overflow: 'hidden',
-        animation: 'rayPulse 9s ease-in-out infinite'
-      }}>
-        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice"
-          style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
-          <defs>
-            <radialGradient id="sunRays" cx="35%" cy="5%" r="70%">
-              <stop offset="0%"   stopColor="rgba(255,255,252,0.45)" />
-              <stop offset="28%"  stopColor="rgba(252,250,242,0.15)" />
-              <stop offset="65%"  stopColor="rgba(245,240,225,0.04)" />
-              <stop offset="100%" stopColor="rgba(245,240,225,0)" />
-            </radialGradient>
-          </defs>
-          <rect x="0" y="0" width="1440" height="900" fill="url(#sunRays)" />
-          {[
-            { d: "M505,0 L148,900 L172,900 Z", o: 0.018 },
-            { d: "M505,0 L258,900 L280,900 Z", o: 0.014 },
-            { d: "M505,0 L378,900 L398,900 Z", o: 0.012 },
-            { d: "M505,0 L498,900 L516,900 Z", o: 0.01 },
-            { d: "M505,0 L608,900 L626,900 Z", o: 0.008 },
-            { d: "M505,0 L718,900 L734,900 Z", o: 0.006 },
-          ].map((ray, i) => (
-            <path key={i} d={ray.d} fill={`rgba(255,255,248,${ray.o})`} />
-          ))}
-        </svg>
-      </div>
+        <div className="card">
+          <h1 className="title">Dignity Foundation</h1>
+          <div className="divider" />
 
-      <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        zIndex: 1, pointerEvents: 'none', overflow: 'hidden',
-        animation: 'threadDrift 24s ease-in-out infinite'
-      }}>
-        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice"
-          style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
-          <defs>
-            <linearGradient id="gt1" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%"   stopColor="rgba(192,168,100,0)" />
-              <stop offset="15%"  stopColor="rgba(192,168,100,0.22)" />
-              <stop offset="50%"  stopColor="rgba(205,182,112,0.42)" />
-              <stop offset="85%"  stopColor="rgba(192,168,100,0.22)" />
-              <stop offset="100%" stopColor="rgba(192,168,100,0)" />
-            </linearGradient>
-            <linearGradient id="wt1" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%"   stopColor="rgba(255,255,250,0)" />
-              <stop offset="20%"  stopColor="rgba(255,255,250,0.28)" />
-              <stop offset="50%"  stopColor="rgba(255,255,255,0.7)" />
-              <stop offset="80%"  stopColor="rgba(255,255,250,0.28)" />
-              <stop offset="100%" stopColor="rgba(255,255,250,0)" />
-            </linearGradient>
-            <radialGradient id="galaxy" cx="34%" cy="52%" r="12%">
-              <stop offset="0%"   stopColor="rgba(255,255,248,1)" />
-              <stop offset="18%"  stopColor="rgba(255,252,235,0.8)" />
-              <stop offset="45%"  stopColor="rgba(245,235,195,0.32)" />
-              <stop offset="75%"  stopColor="rgba(232,218,168,0.1)" />
-              <stop offset="100%" stopColor="rgba(232,218,168,0)" />
-            </radialGradient>
-          </defs>
-
-          <path
-            d="M-100,455 C228,328 448,542 748,415 C1048,288 1248,462 1550,365 L1550,370 C1248,467 1048,293 748,420 C448,547 228,333 -100,460 Z"
-            fill="url(#gt1)" />
-          <path
-            d="M-100,456.5 C228,329.5 448,543.5 748,416.5 C1048,289.5 1248,463.5 1550,366.5 L1550,368 C1248,465 1048,291 748,418 C448,545 228,331 -100,458 Z"
-            fill="url(#wt1)" opacity="0.72" />
-          <path
-            d="M-100,415 C208,295 428,498 728,375 C1028,252 1228,422 1550,328 L1550,334 C1228,428 1028,258 728,381 C428,504 208,301 -100,421 Z"
-            fill="url(#gt1)" opacity="0.55" />
-          <path
-            d="M-100,416 C208,296 428,499 728,376 C1028,253 1228,423 1550,329 L1550,331 C1228,425 1028,255 728,378 C428,501 208,298 -100,418 Z"
-            fill="url(#wt1)" opacity="0.4" />
-          <path
-            d="M-100,498 C188,368 408,578 708,452 C1008,326 1208,498 1550,402 L1550,406 C1208,502 1008,330 708,456 C408,582 188,372 -100,502 Z"
-            fill="url(#gt1)" opacity="0.38" />
-          <path
-            d="M-100,499 C188,369 408,579 708,453 C1008,327 1208,499 1550,403 L1550,404.5 C1208,500.5 1008,328.5 708,454.5 C408,580.5 188,370.5 -100,500.5 Z"
-            fill="url(#wt1)" opacity="0.25" />
-
-          <rect x="0" y="0" width="1440" height="900" fill="url(#galaxy)"
-            style={{ animation: 'galaxyPulse 7s ease-in-out infinite', transformOrigin: '34% 52%' }} />
-          <ellipse cx="488" cy="468" rx="28" ry="4"
-            fill="rgba(255,254,242,0.68)" transform="rotate(-10,488,468)" />
-          <ellipse cx="488" cy="467" rx="9" ry="1.5"
-            fill="rgba(255,255,255,0.88)" transform="rotate(-10,488,467)" />
-        </svg>
-      </div>
-
-      <div style={{
-        minHeight: '100vh', fontFamily: 'Georgia, serif',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '2rem', position: 'relative', zIndex: 2
-      }}>
-        <div style={{
-          background: 'linear-gradient(160deg, rgba(255,255,253,0.82) 0%, rgba(250,247,238,0.88) 60%, rgba(242,236,220,0.82) 100%)',
-          borderRadius: '16px',
-          border: '1px solid rgba(192,168,105,0.32)',
-          boxShadow: `
-            0 8px 48px rgba(100,88,55,0.14),
-            0 2px 12px rgba(100,88,55,0.09),
-            inset 0 1px 0 rgba(255,255,255,0.96),
-            inset 0 -1px 0 rgba(192,168,105,0.09)
-          `,
-          backdropFilter: 'blur(22px)',
-          padding: '3rem', width: '100%', maxWidth: '420px', textAlign: 'center'
-        }}>
-          <h1 style={{
-            fontSize: '2.4rem', marginBottom: '0.1rem', color: '#3B2A1A',
-            letterSpacing: '0.02em', fontWeight: 'normal'
-          }}>Hi</h1>
-
-          <p style={{
-            color: '#B08A10', fontSize: '0.65rem',
-            marginBottom: '0.3rem', letterSpacing: '0.14em', textTransform: 'uppercase'
-          }}>Dignity Foundation</p>
-
-          <p style={{
-            color: '#8A7862', fontSize: '0.85rem',
-            marginBottom: '2.5rem', letterSpacing: '0.03em'
-          }}>{user?.email}</p>
-
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(252,249,240,0.88) 0%, rgba(242,234,214,0.88) 100%)',
-            borderRadius: '10px', border: '1px solid rgba(192,168,105,0.28)',
-            boxShadow: 'inset 0 1px 3px rgba(255,255,255,0.7)',
-            padding: '1.5rem', marginBottom: '2.5rem'
-          }}>
-            <p style={{
-              color: '#8A7862', fontSize: '0.78rem', marginBottom: '0.4rem',
-              letterSpacing: '0.12em', textTransform: 'uppercase'
-            }}>Your Balance</p>
-            <p style={{
-              fontSize: '2.8rem', margin: 0, color: '#B08A10',
-              transition: 'all 0.5s ease'
-            }}>${dollars}</p>
-          </div>
-
-          <div style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', marginBottom: '1.5rem'
-          }}>
-            <div
-              onMouseDown={startHold} onMouseUp={cancelHold}
-              onMouseLeave={cancelHold}
-              onTouchStart={(e) => { e.preventDefault(); startHold() }}
-              onTouchEnd={cancelHold}
-              style={{
-                position: 'relative', width: '160px', height: '160px',
-                cursor: alreadyCheckedIn && !completing ? 'default' : 'pointer',
-                userSelect: 'none', WebkitUserSelect: 'none'
-              }}
-            >
-              <svg width="160" height="160" style={{ position: 'absolute', top: 0, left: 0 }}>
-                <circle cx="80" cy="80" r="70" fill="none"
-                  stroke="rgba(192,168,105,0.22)" strokeWidth="1.5" />
-                {circleWhite > 0 && (
-                  <circle cx="80" cy="80" r="69"
-                    fill={`rgba(255,255,255,${circleWhite})`} />
-                )}
-                {showBullet && trailPoints.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={p.r} fill={p.color} />
-                ))}
-                {showBullet && (
-                  <>
-                    <circle cx={bulletX} cy={bulletY}
-                      r={9 + holdProgress * 4}
-                      fill={holdProgress > 0.85 ? 'white' : bulletColor}
-                      style={{
-                        filter: holdProgress > 0.8
-                          ? 'drop-shadow(0 0 16px rgba(255,255,255,1)) drop-shadow(0 0 32px rgba(255,255,255,0.9))'
-                          : 'drop-shadow(0 0 12px rgba(192,168,105,1)) drop-shadow(0 0 24px rgba(220,195,120,0.8))'
-                      }} />
-                    <circle cx={bulletX} cy={bulletY} r="4"
-                      fill={holdProgress > 0.8 ? 'white' : 'rgba(255,248,200,0.9)'} />
-                  </>
-                )}
-              </svg>
-
-              <div style={{
-                position: 'absolute', top: '12px', left: '12px',
-                width: '136px', height: '136px', borderRadius: '50%',
-                background: completing && circleWhite > 0.5
-                  ? `rgba(255,255,255,${circleWhite})`
-                  : alreadyCheckedIn && !completing
-                  ? 'linear-gradient(180deg, #8A7862 0%, #6E5E4A 100%)'
-                  : 'linear-gradient(180deg, #4A3520 0%, #3B2A1A 100%)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                animation: holding && holdProgress > 0.5 && holdProgress < 0.85
-                  ? 'pulseGold 0.55s ease-in-out infinite'
-                  : holding && holdProgress >= 0.85
-                  ? 'pulseWhite 0.3s ease-in-out infinite' : 'none',
-                boxShadow: holding
-                  ? '0 0 22px rgba(192,168,105,0.38)' : '0 4px 16px rgba(0,0,0,0.18)',
-                transition: 'box-shadow 0.3s'
-              }}>
-                <span style={{
-                  color: circleWhite > 0.3 ? 'transparent'
-                    : alreadyCheckedIn && !completing ? '#C0A882' : '#E8C84A',
-                  fontSize: '0.95rem', letterSpacing: '0.06em',
-                  fontFamily: 'Georgia, serif', textAlign: 'center',
-                  lineHeight: '1.5', whiteSpace: 'pre-line',
-                  fontStyle: holding ? 'italic' : 'normal',
-                  transition: 'color 0.4s ease'
-                }}>
-                  {buttonLabel}
-                </span>
+          {magicSent ? (
+            <>
+              <p className="subtitle">check your email</p>
+              <p style={{ textAlign: 'center', color: '#6B6560', fontSize: '0.9rem', lineHeight: '1.7', marginBottom: '2rem' }}>
+                We sent a link to <strong>{email}</strong>. Tap it to sign in — no password needed.
+              </p>
+              <button className="btn-ghost" onClick={() => { setMagicSent(false); setIsMagicLink(false) }}>
+                back
+              </button>
+            </>
+          ) : isMagicLink ? (
+            <>
+              <p className="subtitle">sign in with magic link</p>
+              <div className="field">
+                <label>Email</label>
+                <input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleMagicLink()}
+                />
               </div>
-            </div>
+              {error && <p className="error">{error}</p>}
+              <button className="btn" onClick={handleMagicLink} disabled={loading}>
+                {loading ? 'sending...' : 'send magic link'}
+              </button>
+              <button className="btn-ghost" onClick={() => { setIsMagicLink(false); setError('') }}>
+                use password instead
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="subtitle">{isSignUp ? 'create your account' : 'sign in to continue'}</p>
+              <div className="field">
+                <label>Email</label>
+                <input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                />
+              </div>
+              <div className="field">
+                <label>Password</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                />
+              </div>
+              {error && <p className="error">{error}</p>}
+              <button className="btn" onClick={handleSubmit} disabled={loading}>
+                {loading ? 'one moment...' : isSignUp ? 'create account' : 'sign in'}
+              </button>
 
-            <p style={{
-              color: '#A09078', fontSize: '0.78rem', marginTop: '1.25rem',
-              letterSpacing: '0.05em', fontStyle: 'italic', minHeight: '1.2rem'
-            }}>
-              {alreadyCheckedIn && !completing ? 'You checked in today.' : ''}
-            </p>
-          </div>
+              <div className="or-divider"><span>or</span></div>
 
-          <div style={{
-            height: '1px',
-            background: 'linear-gradient(90deg, transparent, rgba(192,168,105,0.35), transparent)',
-            margin: '1rem 0'
-          }} />
+              <button className="btn-ghost" onClick={() => { setIsMagicLink(true); setError('') }}>
+                send me a magic link
+              </button>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '0.5rem' }}>
-            <button onClick={() => window.location.href = '/withdraw'} style={{
-              background: 'none', border: 'none', color: '#B08A10',
-              fontSize: '0.8rem', cursor: 'pointer',
-              letterSpacing: '0.06em', fontFamily: 'Georgia, serif',
-            }}>
-              withdraw cash
-            </button>
-            <button onClick={() => window.location.href = '/friends'} style={{
-              background: 'none', border: 'none', color: '#B08A10',
-              fontSize: '0.8rem', cursor: 'pointer',
-              letterSpacing: '0.06em', fontFamily: 'Georgia, serif',
-            }}>
-              check on friends
-            </button>
-          </div>
-
-          <button onClick={handleSignOut} style={{
-            background: 'none', border: 'none', color: '#A09078',
-            fontSize: '0.8rem', cursor: 'pointer',
-            letterSpacing: '0.06em', fontFamily: 'Georgia, serif'
-          }}>
-            sign out
-          </button>
+              <div className="toggle">
+                {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+                <button onClick={() => { setIsSignUp(!isSignUp); setError('') }}>
+                  {isSignUp ? 'sign in' : 'sign up'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>
